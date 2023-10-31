@@ -35,7 +35,7 @@ install_configs() {
     install -p -m 0644 -t "$DESTDIR/$MOZ_PREF_BASE" ./conf/gmpwidevine.js
 }
 
-if [ "$1" == "--distinstall" ]; then
+if [ "$1" = "--distinstall" ]; then
     install_configs
     install -d -m 0755 "$DESTDIR/$LIBEXECDIR/widevine-installer"
     install -p -m 0644 -t "$DESTDIR/$LIBEXECDIR/widevine-installer" ./widevine_fixup.py
@@ -85,7 +85,7 @@ echo
 echo "Widevine version to be installed: $WIDEVINE_VERSION"
 echo
 echo "Press enter to proceed, or Ctrl-C to cancel."
-read
+read dummy
 
 workdir="$(mktemp -d /tmp/widevine-installer.XXXXXXXX)"
 [ -z "$workdir" ] && exit 1 # sanity check
@@ -110,7 +110,7 @@ cat squashfs-root/WidevineCdm/LICENSE
 echo ===================================================================================
 echo
 echo "Press enter to proceed, or Ctrl-C to cancel."
-read
+read dummy
 
 python3 "$SCRIPT_BASE/widevine_fixup.py" squashfs-root/WidevineCdm/_platform_specific/cros_arm64/libwidevinecdm.so libwidevinecdm.so
 
@@ -131,7 +131,7 @@ touch "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so
 ln -sf ../manifest.json "$INSTALL_BASE"/WidevineCdm
 ln -sf ../../../libwidevinecdm.so "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_arm64/
 
-if [ "$COPY_CONFIGS" == 1 ]; then
+if [ "$COPY_CONFIGS" = 1 ]; then
     install_configs
 fi
 
@@ -141,7 +141,7 @@ rm -rf "$workdir"
 
 echo
 echo "Installation complete!"
-if [ "$COPY_CONFIGS" == 1 ]; then
+if [ "$COPY_CONFIGS" = 1 ]; then
     echo "You may need to log out and back in for the changes to take effect."
 else
     echo "Please restart your browser for the changes to take effect."
