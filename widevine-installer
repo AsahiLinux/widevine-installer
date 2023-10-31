@@ -10,9 +10,9 @@ set -e
 : ${LIBDIR:=/usr/lib64}
 : ${BINDIR:=/usr/bin}
 : ${LIBEXECDIR:=/usr/libexec}
-: ${OPTDIR:=/opt}
+: ${STATEDIR:=/var/lib}
 : ${SCRIPT_BASE:=$LIBEXECDIR/widevine-installer}
-: ${INSTALL_BASE:=$OPTDIR/widevine}
+: ${INSTALL_BASE:=$STATEDIR/widevine}
 : ${DISTFILES_BASE:=https://commondatastorage.googleapis.com/chromeos-localmirror/distfiles}
 : ${LACROS_NAME:=chromeos-lacros-arm64-squash-zstd}
 : ${LACROS_VERSION:=120.0.6098.0}
