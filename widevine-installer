@@ -125,7 +125,8 @@ echo "Setting up plugin for Firefox and Chromium-based browsers..."
 mkdir -p "$INSTALL_BASE"/gmp-widevinecdm/system-installed
 ln -sf ../../manifest.json "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
 ln -sf ../../libwidevinecdm.so "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
-mkdir -p "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_{arm64,x64}
+mkdir -p "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_arm64
+mkdir -p "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_x64
 # Hack because Chromium hardcodes a check for this right now...
 touch "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so
 ln -sf ../manifest.json "$INSTALL_BASE"/WidevineCdm
