@@ -11,6 +11,7 @@ set -e
 : ${BINDIR:=/usr/bin}
 : ${LIBEXECDIR:=/usr/libexec}
 : ${STATEDIR:=/var/lib}
+: ${ENVIRONMENTDIR:=/usr/lib/environment.d}
 : ${SCRIPT_BASE:=$LIBEXECDIR/widevine-installer}
 : ${INSTALL_BASE:=$STATEDIR/widevine}
 : ${DISTFILES_BASE:=https://commondatastorage.googleapis.com/chromeos-localmirror/distfiles}
@@ -27,8 +28,8 @@ install_configs() {
     echo "Copying config files..."
     install -d -m 0755 "$DESTDIR/$INSTALL_BASE"
     install -p -m 0644 -t "$DESTDIR/$INSTALL_BASE" ./conf/README
-    install -d -m 0755 "$DESTDIR/$CONFDIR/profile.d/"
-    install -p -m 0644 -t "$DESTDIR/$CONFDIR/profile.d/" ./conf/gmpwidevine.sh
+    install -d -m 0755 "$DESTDIR/$ENVIRONMENTDIR/"
+    install -p -m 0644 ./conf/gmpwidevine.conf "$DESTDIR/$ENVIRONMENTDIR/50-gmpwidevine.conf"
     install -d -m 0755 "$DESTDIR/$CHROME_WIDEVINE_BASE"
     ln -sf "$INSTALL_BASE/WidevineCdm" "$DESTDIR/$CHROME_WIDEVINE_BASE/WidevineCdm"
     install -d -m 0755 "$DESTDIR/$MOZ_PREF_BASE"
