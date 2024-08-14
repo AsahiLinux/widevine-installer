@@ -4,10 +4,6 @@ This tool will download and install Widevine systemwide for aarch64 systems.
 It performs the necessary configuration changes to make Widevine available for
 both Firefox and Chromium-based browsers.
 
-NOTE: Using Widevine requires glibc version 2.36 or later. Arch Linux ARM ships
-an ancient glibc version, and will not work at this time. Most other distros
-(even Debian stable) should be OK.
-
 # Credits
 
 Original fixup script by [@DavidBuchanan314](https://github.com/DavidBuchanan314):
