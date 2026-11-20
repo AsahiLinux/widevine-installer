@@ -14,14 +14,13 @@ set -e
 : ${ENVIRONMENTDIR:=/usr/lib/environment.d}
 : ${SCRIPT_BASE:=$LIBEXECDIR/widevine-installer}
 : ${INSTALL_BASE:=$STATEDIR/widevine}
-: ${DISTFILES_BASE:=https://commondatastorage.googleapis.com/chromeos-localmirror/distfiles}
-: ${LACROS_NAME:=chromeos-lacros-arm64-squash-zstd}
-: ${LACROS_VERSION:=120.0.6098.0}
-: ${WIDEVINE_VERSION:=4.10.2662.3}
+: ${UPDATE_URL:=https://update.googleapis.com/service/update2/json}
+: ${WIDEVINE_APPID:=oimompecagnajdejgnnjijobebaeigek}
+: ${UPDATER_VERSION:=151.0.7922.173}
 : ${CHROME_WIDEVINE_BASE:=$LIBDIR/chromium-browser}
 : ${MOZ_PREF_BASE:=$LIBDIR/firefox/defaults/pref}
 
-[ -e $(dirname "$0")/widevine_fixup.py ] && SCRIPT_BASE="$(realpath "$(dirname "$0")")"
+[ -e "$(dirname "$0")/conf/gmpwidevine.js" ] && SCRIPT_BASE="$(realpath "$(dirname "$0")")"
 
 install_configs() {
     cd "$SCRIPT_BASE"
@@ -38,10 +37,51 @@ install_configs() {
     install -p -m 0644 -t "$DESTDIR/$MOZ_PREF_BASE" ./conf/gmpwidevine.js
 }
 
+# Ask Google's component update service for the latest Linux arm64 CDM.
+# Prints "version sha256 url".
+query_latest() {
+    response="$(curl -fsS -A "Mozilla/5.0" -H "Content-Type: application/json" \
+        --data-binary @- "$UPDATE_URL" <<EOF
+{"request": {
+  "@os": "", "@updater": "", "protocol": "4.0",
+  "acceptformat": "crx3,download,puff,run,xz,zucc",
+  "apps": [{"appid": "$WIDEVINE_APPID", "installsource": "ondemand",
+            "updatecheck": {}, "version": "0.0.0.0"}],
+  "dedup": "cr", "ismachine": false, "arch": "arm64",
+  "os": {"arch": "arm64", "platform": "Linux"},
+  "updaterversion": "$UPDATER_VERSION"
+}}
+EOF
+)"
+    # Response is JSON prefixed with an anti-XSSI line
+    printf '%s' "$response" | python3 -I -c '
+import json, sys
+text = sys.stdin.read()
+check = json.loads(text[text.index("{"):])["response"]["apps"][0]["updatecheck"]
+if check.get("status") != "ok":
+    sys.exit("Update service returned status: %s" % check.get("status"))
+op = next(o for o in check["pipelines"][0]["operations"] if o["type"] == "download")
+urls = [u["url"] for u in op["urls"] if u["url"].startswith("https://")]
+url = next((u for u in urls if u.startswith("https://dl.google.com/")), urls[0])
+print(check["nextversion"], op["out"]["sha256"], url)
+'
+}
+
+# Prints the version of the installed CDM, or nothing if none is installed
+installed_version() {
+    manifest="$INSTALL_BASE/WidevineCdm/manifest.json"
+    [ -e "$manifest" ] || return 0
+    python3 -I -c 'import json, sys; print(json.load(open(sys.argv[1]))["version"])' \
+        "$manifest" 2>/dev/null || true
+}
+
+# Succeeds if version $1 is newer than version $2
+version_newer() {
+    [ "$1" != "$2" ] && [ "$(printf '%s\n%s\n' "$1" "$2" | sort -V | tail -1)" = "$1" ]
+}
+
 if [ "$1" = "--distinstall" ]; then
     install_configs
-    install -d -m 0755 "$DESTDIR/$LIBEXECDIR/widevine-installer"
-    install -p -m 0644 -t "$DESTDIR/$LIBEXECDIR/widevine-installer" ./widevine_fixup.py
     install -d -m 0755 "$DESTDIR/$BINDIR"
     install -p -m 0755 -t "$DESTDIR/$BINDIR" ./widevine-installer
     exit 0
@@ -57,91 +97,86 @@ if [ "$(whoami)" != "root" ]; then
     exit 1
 fi
 
-verchk() {
-    (
-        echo "2.36"
-        ldd --version | head -1 | cut -d" " -f4
-    ) | sort -CV
-}
+workdir="$(mktemp -d /tmp/widevine-installer.XXXXXXXX)"
+[ -z "$workdir" ] && exit 1 # sanity check
+[ ! -d "$workdir" ] && exit 1 # sanity check
+trap 'rm -rf "$workdir"' EXIT
 
-if ! verchk; then
-    echo "Your glibc version is too old. Widevine requires glibc 2.36 or newer."
-    exit 1
+cd "$workdir"
+
+echo "Checking for the latest Widevine CDM..."
+info="$(query_latest)"
+read -r WIDEVINE_VERSION WIDEVINE_SHA256 WIDEVINE_URL <<EOF
+$info
+EOF
+
+INSTALLED_VERSION="$(installed_version)"
+if [ -n "$INSTALLED_VERSION" ] && ! version_newer "$WIDEVINE_VERSION" "$INSTALLED_VERSION"; then
+    echo "Widevine $INSTALLED_VERSION is installed and up to date (latest: $WIDEVINE_VERSION)."
+    exit 0
 fi
 
-echo "This script will download, adapt, and install a copy of the Widevine"
+echo
+echo "This script will download and install a copy of the Widevine"
 echo "Content Decryption Module for aarch64 systems."
 echo
 echo "Widevine is a proprietary DRM technology developed by Google."
-echo "This script uses ARM64 builds intended for ChromeOS images and is"
-echo "not supported nor endorsed by Google. The Asahi Linux community"
-echo "also cannot provide direct support for using this proprietary"
-echo "software, nor any guarantees about its security, quality,"
-echo "functionality, nor privacy. You assume all responsibility for"
-echo "usage of this script and of the installed CDM."
+echo "This script installs the official Linux ARM64 build distributed"
+echo "by Google for Chrome, unmodified. It is not supported nor endorsed"
+echo "by Google. The Asahi Linux community also cannot provide direct"
+echo "support for using this proprietary software, nor any guarantees"
+echo "about its security, quality, functionality, nor privacy. You"
+echo "assume all responsibility for usage of this script and of the"
+echo "installed CDM."
 echo
-echo "This installer will only adapt the binary file format of the CDM"
-echo "for interoperability purposes, to make it function on vanilla"
-echo "ARM64 systems (instead of just ChromeOS). The CDM software"
-echo "itself will not be modified in any way."
-echo
+[ -n "$INSTALLED_VERSION" ] && echo "Currently installed Widevine version: $INSTALLED_VERSION"
 echo "Widevine version to be installed: $WIDEVINE_VERSION"
 echo
 echo "Press enter to proceed, or Ctrl-C to cancel."
 read dummy
 
-workdir="$(mktemp -d /tmp/widevine-installer.XXXXXXXX)"
-[ -z "$workdir" ] && exit 1 # sanity check
-[ ! -d "$workdir" ] && exit 1 # sanity check
-
-cd "$workdir"
-
-echo "Downloading LaCrOS (Chrome) image..."
-URL="$DISTFILES_BASE/$LACROS_NAME-$LACROS_VERSION"
-echo "URL: $URL"
-curl -# -o lacros.squashfs "$URL"
+echo "Downloading Widevine CDM..."
+echo "URL: $WIDEVINE_URL"
+curl -f -# -o widevine.crx3 "$WIDEVINE_URL"
+echo "$WIDEVINE_SHA256  widevine.crx3" | sha256sum -c -
 
 echo
 echo "Extracting Widevine..."
-unsquashfs -q lacros.squashfs 'WidevineCdm/*'
+# A CRX3 is a signed header followed by a ZIP archive, which zipfile handles
+python3 -I -m zipfile -e widevine.crx3 WidevineCdm
 
 echo
 echo "The Widevine license agreement follows:"
 echo
 echo ===================================================================================
-cat squashfs-root/WidevineCdm/LICENSE
+cat WidevineCdm/LICENSE
 echo ===================================================================================
 echo
 echo "Press enter to proceed, or Ctrl-C to cancel."
 read dummy
 
-python3 "$SCRIPT_BASE/widevine_fixup.py" squashfs-root/WidevineCdm/_platform_specific/cros_arm64/libwidevinecdm.so libwidevinecdm.so
-
 echo
 echo "Installing..."
-install -d -m 0755 "$INSTALL_BASE"
-install -p -m 0755 -t "$INSTALL_BASE" libwidevinecdm.so
-install -p -m 0644 -t "$INSTALL_BASE" squashfs-root/WidevineCdm/manifest.json
-install -p -m 0644 -t "$INSTALL_BASE" squashfs-root/WidevineCdm/LICENSE
+# Clear out previous installs, including the old LaCrOS-based layout
+rm -rf "$INSTALL_BASE/WidevineCdm" "$INSTALL_BASE/gmp-widevinecdm"
+rm -f "$INSTALL_BASE/libwidevinecdm.so" "$INSTALL_BASE/manifest.json" "$INSTALL_BASE/LICENSE"
+
+CDM_DIR="$INSTALL_BASE/WidevineCdm"
+CDM_LIB_DIR="$CDM_DIR/_platform_specific/linux_arm64"
+install -d -m 0755 "$CDM_LIB_DIR"
+install -p -m 0644 -t "$CDM_DIR" WidevineCdm/manifest.json WidevineCdm/LICENSE
+install -p -m 0755 -t "$CDM_LIB_DIR" WidevineCdm/_platform_specific/linux_arm64/libwidevinecdm.so
 
 echo "Setting up plugin for Firefox and Chromium-based browsers..."
 mkdir -p "$INSTALL_BASE"/gmp-widevinecdm/system-installed
-ln -sf ../../manifest.json "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
-ln -sf ../../libwidevinecdm.so "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
-mkdir -p "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_arm64
-mkdir -p "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_x64
-# Hack because Chromium hardcodes a check for this right now...
-touch "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_x64/libwidevinecdm.so
-ln -sf ../manifest.json "$INSTALL_BASE"/WidevineCdm
-ln -sf ../../../libwidevinecdm.so "$INSTALL_BASE"/WidevineCdm/_platform_specific/linux_arm64/
+ln -sf ../../WidevineCdm/manifest.json "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
+ln -sf ../../WidevineCdm/_platform_specific/linux_arm64/libwidevinecdm.so "$INSTALL_BASE"/gmp-widevinecdm/system-installed/
 
 if [ "$COPY_CONFIGS" = 1 ]; then
     install_configs
 fi
 
-echo "Cleaning up..."
 cd /
-rm -rf "$workdir"
 
 echo
 echo "Installation complete!"
